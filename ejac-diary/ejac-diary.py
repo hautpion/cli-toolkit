@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-__version__ = "2.3.0"
-print(f"ejac-diary ({__version__}|23.08.2026) - a cli for logging ejaculations")
+__version__ = "2.3.1"
+print(f"ejac-diary ({__version__}|25.08.2026) - a cli for logging ejaculations")
 
 import os
 import sys
 import json
 import calendar
 from datetime import datetime, timedelta
+from pathlib import Path
 
 class Ejac():
     def __init__(self, date, time, act_type, place, note):
@@ -23,12 +24,36 @@ class Ejac():
         return {"date": self.date, "time": self.time, "act_type": self.act_type, "place": self.place, "note": self.note}
 
 EJACS = []
-script_dir = os.path.abspath(__file__)
-data_path = os.path.join(os.path.dirname(script_dir), "ejacs.json")
-if os.path.exists(data_path):
-    with open(data_path, "r") as f:
-        for ejac in json.load(f):
-            EJACS.append(Ejac(**ejac))
+
+if sys.platform == "win32":
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+elif sys.platform == "darwin":
+    base_dir = Path.home() / "Library" / "Application Support"
+else:
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    base_dir = Path(xdg_data) if xdg_data else Path.home() / ".local" / "share"
+
+data_dir = base_dir / "ejac-diary"
+data_dir.mkdir(parents=True, exist_ok=True)
+data_file_path = data_dir / "data.json"
+
+if os.path.exists(data_file_path):
+    with open(data_file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        list_ejacs = data
+        file_version = 0 # 2.3.0
+        print("warning: save data format is outdated (2.3.0 format); it shall be updated, once you make the save")
+        backup_path = data_dir / "data.json.backup"
+        backup_path.write_bytes(data_file_path.read_bytes())
+    else:
+        list_ejacs = data["ejacs"]
+        file_version = data["version"]
+
+    for ejac in list_ejacs:
+        EJACS.append(Ejac(**ejac))
 
 if EJACS:
     first_ejac_date = datetime.strptime(EJACS[0].date, "%d.%m.%Y")
@@ -91,20 +116,32 @@ if __name__ == "__main__":
 
         elif command == "a":
             delta = (datetime.now() - first_ejac_date).days
-            today = datetime.now()
+            if delta != 0:
+                today = datetime.now()
 
-            all_before_today = len(list(filter(lambda ejac: ejac.date != today.strftime("%d.%m.%Y"), EJACS)))
-            final_all_without_today = round(all_before_today / delta, 3)
-            print(f"last midnight avrg per day (all time):      {final_all_without_today:<5} ({all_before_today}w/{delta}d){" "*(7-(len(str(all_before_today))+len(str(delta))))}{"■"*int(final_all_without_today*20)}")
+                all_before_today = len(list(filter(lambda ejac: ejac.date != today.strftime("%d.%m.%Y"), EJACS)))
+                final_all_without_today = round(all_before_today / delta, 3)
+                print(f"last midnight avrg per day (all time):      {final_all_without_today:<5} ({all_before_today}w/{delta}d){" "*(7-(len(str(all_before_today))+len(str(delta))))}{"■"*int(final_all_without_today*20)}")
 
-            final_all_with_today = round((len(EJACS) / (delta + 1)), 3)
-            print(f"next midnight avrg per day (all time):      {final_all_with_today:<5} ({len(EJACS)}w/{delta+1}d){" "*(7-(len(str(len(EJACS)))+len(str(delta+1))))}{"■"*int(final_all_with_today*20)}\n")
+                final_all_with_today = round((len(EJACS) / (delta + 1)), 3)
+                print(f"next midnight avrg per day (all time):      {final_all_with_today:<5} ({len(EJACS)}w/{delta+1}d){" "*(7-(len(str(len(EJACS)))+len(str(delta+1))))}{"■"*int(final_all_with_today*20)}\n")
 
-            for term in [7, 14, 30, 90, 180, 360]:
-                last_x_days = [(today - timedelta(days = i + 1)).strftime("%d.%m.%Y") for i in range(term)]
-                ejaces_per_x_days = len(list(filter(lambda ejac: ejac.date in last_x_days, EJACS)))
-                final_number_x_days = round(ejaces_per_x_days / term, 3)
-                print(f"last midnight avrg per day (last {term} days):{" "*(4-len(str(term)))}{final_number_x_days:<5} ({ejaces_per_x_days}w/{term}d){" "*(7-(len(str(ejaces_per_x_days))+len(str(term))))}{"■"*int(final_number_x_days*20)}")
+                for term in [7, 14, 30, 90, 180, 360]:
+                    last_x_days = [(today - timedelta(days = i + 1)).strftime("%d.%m.%Y") for i in range(term)]
+                    ejaces_per_x_days = len(list(filter(lambda ejac: ejac.date in last_x_days, EJACS)))
+                    final_number_x_days = round(ejaces_per_x_days / term, 3)
+                    print(f"last midnight avrg per day (last {term} days):{" "*(4-len(str(term)))}{final_number_x_days:<5} ({ejaces_per_x_days}w/{term}d){" "*(7-(len(str(ejaces_per_x_days))+len(str(term))))}{"■"*int(final_number_x_days*20)}")
+            else:
+                final_all_with_today = round((len(EJACS) / (delta + 1)), 3)
+                print(f"""last midnight avrg per day (all time):      0.0   (0w/0d)
+next midnight avrg per day (all time):      {final_all_with_today:<5} ({len(EJACS)}w/{delta+1}d){" "*(7-(len(str(len(EJACS)))+len(str(delta+1))))}{"■"*int(final_all_with_today*20)}
+
+last midnight avrg per day (last 7 days):   0.0   (0w/7d)
+last midnight avrg per day (last 14 days):  0.0   (0w/14d)
+last midnight avrg per day (last 30 days):  0.0   (0w/30d)
+last midnight avrg per day (last 90 days):  0.0   (0w/90d)
+last midnight avrg per day (last 180 days): 0.0   (0w/180d)
+last midnight avrg per day (last 360 days): 0.0   (0w/360d)""")
 
         elif command == "c":
             try:
@@ -182,7 +219,10 @@ if __name__ == "__main__":
 
             for n in [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5]:
                 hour = hours[n]
-                print(f"{n:02}: |{"∎" * int(hour / m * 36):<36} |{str(round(hour / wihl * 100, 1))}% {hour}")
+                if m != 0:
+                    print(f"{n:02}: |{"∎" * int(hour / m * 36):<36} |{str(round(hour / wihl * 100, 1))}% {hour}")
+                else:
+                    print(f"{n:02}: |{" " * 36} |0% {hour}")
             print()
 
         elif command =="w":
@@ -207,9 +247,14 @@ if __name__ == "__main__":
                 print(f"{place}: {count}")
 
         elif command == "s":
-            with open(data_path, "w") as f:
-                json.dump([ejac.to_json() for ejac in EJACS], f)
+            payload = {
+                "version": "2.3.1",
+                "ejacs": [ejac.to_json() for ejac in EJACS]
+            }
+            with open(data_file_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
                 print("saved")
 
         elif command == "e":
             break
+
